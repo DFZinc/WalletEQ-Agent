@@ -5,7 +5,7 @@
 
 # WalletEQ Agent
 
-**A Zen-Tech product** — Vibe coded by Claude Sonnet 4.6, in collaboration with ZenKnowsCrypto
+**A Zen-Tech proof of concept** — Vibe coded by Claude Sonnet 4.6, in collaboration with ZenKnowsCrypto
 
 WalletEQ Agent is an on-chain wallet intelligence tool that monitors Ethereum token volume, extracts buyers, scores wallets by trading quality, and builds a watchlist of high-conviction traders to monitor over time.
 
@@ -121,7 +121,11 @@ walleteq-agent/
 └── static/
     └── index.html      # Dashboard frontend
 ```
+## Using the Agent & Notes from the Author
 
+Please note this is an analytical tool, despite what you may have seen being posted by people on X, the majority of vibe coded apps will not make you money, or give you an unethical edge in speculative high volatility assets. This Agent's design is primarily to collect data, which can be used in several ways, mostly for learning and training LLMs & other Agents.
+
+Bear in mind this is V1, and early stage. Future versions will no doubt improve the design and incorporate LLM functionality.
 ---
 
 ## License
