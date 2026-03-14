@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="static/logo.png" alt="WalletEQ Agent" width="120"/>
-</p>
+
 # WalletEQ Agent
 
 **A Zen-Tech product** — Vibe coded by Claude Sonnet 4.6, in collaboration with ZenKnowsCrypto
