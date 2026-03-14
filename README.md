@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="static/logo.png" alt="WalletEQ Agent" width="120"/>
+</p>
+
 
 # WalletEQ Agent
 
