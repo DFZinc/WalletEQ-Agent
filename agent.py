@@ -1,0 +1,207 @@
+"""
+ETH Wallet Intelligence Agent
+------------------------------
+Monitors ETH token volume → extracts buyers → scores wallets → builds watchlist.
+Tracks quality wallets for pattern and narrative analysis.
+"""
+
+import asyncio
+from pathlib import Path
+import sys
+import logging
+from datetime import datetime, timezone
+
+from rate_limiter  import RateLimiter
+from volume_monitor import VolumeMonitor
+from wallet_analyzer import WalletAnalyzer
+from wallet_scorer   import WalletScorer
+from watchlist       import Watchlist
+from cache           import Cache
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
+log = logging.getLogger(__name__)
+
+
+class ETHWalletAgent:
+    def __init__(self):
+        self.rate_limiter    = RateLimiter(calls_per_second=5)
+        self.volume_monitor  = VolumeMonitor(self.rate_limiter)
+        self.wallet_analyzer = WalletAnalyzer(self.rate_limiter)
+        self.wallet_scorer   = WalletScorer()
+        self.watchlist       = Watchlist()
+        self.cache           = Cache()
+
+        self.BUYERS_TO_ANALYZE      = 30
+        self.MIN_SCORE_TO_WATCHLIST = 65
+        self.POLL_INTERVAL_SECONDS  = 120  # 2 min cycles — ETH is slower than Solana
+
+    async def run(self):
+        log.info("ETH Wallet Agent started.")
+        log.info(
+            f"Cache: {self.cache.wallet_count()} wallets known, "
+            f"{self.cache.token_count()} tokens previously scanned"
+        )
+        log.info(f"Watchlist: {self.watchlist.count()} wallets tracked")
+
+        while True:
+            try:
+                await self._cycle()
+            except Exception as e:
+                log.error(f"Cycle error: {e}")
+            await asyncio.sleep(self.POLL_INTERVAL_SECONDS)
+
+    async def _cycle(self):
+        # Stage 1: Detect active tokens
+        active_tokens = await self.volume_monitor.get_active_tokens()
+        if not active_tokens:
+            log.info("No active tokens detected this cycle.")
+            await self._refresh_watchlist()
+            return
+
+        # Filter already-scanned tokens
+        new_tokens = [t for t in active_tokens if not self.cache.has_token(t["address"])]
+        skipped    = len(active_tokens) - len(new_tokens)
+
+        if skipped:
+            log.info(
+                f"{len(active_tokens)} active token(s) — "
+                f"{skipped} cached, {len(new_tokens)} new."
+            )
+        else:
+            log.info(f"{len(new_tokens)} new active token(s).")
+
+        for token in new_tokens:
+            await self._process_token(token)
+
+        await self._refresh_watchlist()
+
+    async def _process_token(self, token: dict):
+        address = token["address"]
+        symbol  = token.get("symbol", address[:8])
+        log.info(f"Analyzing: {symbol} | {address}")
+
+        # Mark scanned immediately — store price change for dashboard display
+        self.cache.save_token(address, symbol, token.get("price_change_pct_1h", 0.0))
+
+        buyers = await self.wallet_analyzer.get_token_buyers(
+            token_address=address,
+            window_minutes=60,
+            limit=self.BUYERS_TO_ANALYZE
+        )
+
+        if not buyers:
+            log.info(f"  No buyers found for {symbol}")
+            return
+
+        new_buyers    = [w for w in buyers if not self.cache.has_wallet(w)]
+        cached_buyers = [w for w in buyers if self.cache.has_wallet(w)]
+
+        log.info(
+            f"  {len(buyers)} buyer(s) — "
+            f"{len(new_buyers)} new, {len(cached_buyers)} from cache"
+        )
+
+        quality_wallets = []
+
+        # Cached wallets — instant, no API calls
+        for wallet in cached_buyers:
+            cached  = self.cache.get_wallet(wallet)
+            profile = cached["profile"]
+            score   = cached["score"]
+            self._log_wallet(wallet, profile, score, cached=True)
+            if score["total"] >= self.MIN_SCORE_TO_WATCHLIST:
+                quality_wallets.append(self._entry(wallet, profile, score, symbol))
+
+        # New wallets — full Etherscan analysis
+        for wallet in new_buyers:
+            profile = await self.wallet_analyzer.build_wallet_profile(wallet)
+            score   = self.wallet_scorer.score(profile)
+            self.cache.save_wallet(wallet, profile, score)
+            self._log_wallet(wallet, profile, score, cached=False)
+            if score["total"] >= self.MIN_SCORE_TO_WATCHLIST:
+                quality_wallets.append(self._entry(wallet, profile, score, symbol))
+
+        # Volume legitimacy
+        ratio   = round(len(quality_wallets) / len(buyers) * 100, 1) if buyers else 0
+        verdict = (
+            "ORGANIC" if ratio >= 40 else
+            "MIXED"   if ratio >= 20 else
+            "SUSPICIOUS"
+        )
+        log.info(f"  Volume verdict for {symbol}: {verdict} ({ratio}% quality wallets)")
+
+        for w in quality_wallets:
+            if self.watchlist.add(w):
+                log.info(f"  ✅ Watchlist: {w['address'][:10]}... | Score: {w['score']['total']} | {w['score']['verdict']}")
+                # Auto-export spreadsheet
+                try:
+                    import subprocess
+                    subprocess.Popen(
+                        [sys.executable, str(BASE_DIR / "export_watchlist.py")],
+                        cwd=str(BASE_DIR)
+                    )
+                    log.info("  📊 Watchlist spreadsheet updated.")
+                except Exception as e:
+                    log.debug(f"Auto-export error: {e}")
+
+    async def _refresh_watchlist(self):
+        wallets = self.watchlist.get_all()
+        if not wallets:
+            return
+        log.info(f"Refreshing {len(wallets)} watchlisted wallet(s)...")
+        new_trade_count = 0
+        for wallet in wallets:
+            seen_hashes = {
+                t.get("tx_hash", "")
+                for t in wallet.get("activity", [])
+            }
+            trades = await self.wallet_analyzer.get_recent_trades(
+                wallet_address=wallet["address"],
+                since_minutes=self.POLL_INTERVAL_SECONDS // 60 + 5
+            )
+            for trade in trades:
+                if trade.get("tx_hash", "") in seen_hashes:
+                    continue
+                log.info(
+                    f"  👁 {wallet['address'][:10]}... "
+                    f"-> {trade['action'].upper()} {trade['token_symbol']} "
+                    f"| {trade['eth_amount']:.4f} ETH"
+                )
+                self.watchlist.log_activity(wallet["address"], trade)
+                seen_hashes.add(trade.get("tx_hash", ""))
+                new_trade_count += 1
+        if new_trade_count == 0:
+            log.info("  No new activity.")
+
+    def _log_wallet(self, address: str, profile: dict, score: dict, cached: bool):
+        tag = "[CACHE]" if cached else "      "
+        reason = score.get("disqualify_reason", "")
+        path   = f" [{score['path']}]" if score.get("path") else ""
+        log.info(
+            f"  {tag} {address[:10]}... | "
+            f"Age: {profile['age_days']}d | "
+            f"Win rate: {profile['win_rate']}% | "
+            f"Cost: {profile.get('total_cost_eth', 0):.4f} ETH | "
+            f"P&L: {profile['total_pnl_eth']:.4f} ETH | "
+            f"ROI: {profile.get('roi_pct', 0):.1f}% | "
+            f"Score: {score['total']}/100 | "
+            f"{score['verdict']}{path}"
+            + (f" | {reason}" if reason else "")
+        )
+
+    def _entry(self, address, profile, score, symbol) -> dict:
+        return {
+            "address":  address,
+            "profile":  profile,
+            "score":    score,
+            "found_on": symbol,
+            "found_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+
+if __name__ == "__main__":
+    agent = ETHWalletAgent()
+    asyncio.run(agent.run())

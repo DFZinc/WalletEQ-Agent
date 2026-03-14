@@ -1,16 +1,128 @@
-# WalletEQ-Agent
-Python Based Agent scanning Blockchain(s) for Volume across tokens &amp; analyzing wallets.
+# WalletEQ Agent
 
-A Vibe Coded Agent designed to look at high volume & look at the traders wallets & analyze the data. The data collected by the agent can be used in several ways:
+**A Zen-Tech product** — Vibe coded by Claude Sonnet 4.6, in collaboration with ZenKnowsCrypto
 
-* Spotting accumulation activity on older tokens.
-* Finding wallets to copytrade with.
-* PnL Analysis of holders and wallet History data
-* Wash/Bot trading vs organic/real volume detection
+WalletEQ Agent is an on-chain wallet intelligence tool that monitors Ethereum token volume, extracts buyers, scores wallets by trading quality, and builds a watchlist of high-conviction traders to monitor over time.
 
-What this agent won't/can't do:
-* make you money out of thin air
-* give financial investing insight
-* Determine speculative value of a token
+---
 
-The agent was built more as a proof of concept of what can be built to extrapolate date to build further tools using LLMs such as Llama or DeepSeek. The remedial task of data collection can be done via python and as a result requires little to no overhead to run.
+## What It Does
+
+- Detects ETH tokens with genuine volume activity using DexScreener
+- Extracts buyer wallets from on-chain token transfer data via Etherscan
+- Scores each wallet across win rate, ROI, P&L, trade diversity, and wallet age
+- Builds a persistent watchlist of quality traders
+- Monitors watchlisted wallets for new activity every cycle
+- Displays everything in a real-time web dashboard
+
+---
+
+## Dashboard Features
+
+- Live agent log with colour-coded events
+- Scanned token feed with CoinGecko logos and categories
+- Watchlist table with expandable trade history per wallet
+- Live activity feed linked to Etherscan transactions
+- P&L overview chart
+- Agent start/stop controls with audio alerts
+- Auto-exports watchlist to Excel on new wallet discovery
+
+---
+
+## Requirements
+
+- Python 3.10+
+- An Etherscan API key (free at [etherscan.io/apis](https://etherscan.io/apis))
+
+---
+
+## Setup
+
+**1. Clone the repository**
+```bash
+git clone https://github.com/yourusername/walleteq-agent.git
+cd walleteq-agent
+```
+
+**2. Install dependencies**
+```bash
+pip install aiohttp fastapi uvicorn openpyxl
+```
+
+**3. Set your API key**
+```bash
+cp .env.example .env
+# Edit .env and add your Etherscan API key
+```
+
+**4. Add your static assets** (optional)
+- Place `static/bg.jpg` for the dashboard background
+- Place `static/logo.png` for the header logo
+- Place `static/sounds/start.ogg`, `stop.ogg`, `walletalert.ogg`, `activityalert.ogg` for audio alerts
+
+**5. Run the diagnostic to verify your API key**
+```bash
+ETHERSCAN_API_KEY=your_key python diagnostic.py
+```
+
+**6. Start the dashboard**
+```bash
+ETHERSCAN_API_KEY=your_key python server.py
+```
+
+Then open [http://localhost:8000](http://localhost:8000) in your browser and click **Start Agent**.
+
+---
+
+## Wallet Scoring
+
+Wallets are scored 0–100 and qualify via one of three paths:
+
+| Path | Criteria |
+|------|----------|
+| A — Consistent | Win rate ≥ 70% |
+| B — High Conviction | ROI ≥ 50% AND P&L ≥ 5 ETH |
+| C — Absolute P&L | Total P&L ≥ 50 ETH |
+
+Hard disqualifiers: bot detected, wallet age < 14 days, fewer than 5 tokens traded, net P&L ≤ 0.
+
+---
+
+## Data Sources
+
+| Data | Source | Auth |
+|------|--------|------|
+| Volume detection | DexScreener | None required |
+| Buyer extraction | Etherscan V2 | Free API key |
+| Wallet history & P&L | Etherscan V2 | Free API key |
+| Token logos & categories | CoinGecko | None required |
+
+---
+
+## Project Structure
+
+```
+walleteq-agent/
+├── agent.py            # Main orchestrator
+├── volume_monitor.py   # DexScreener volume detection
+├── wallet_analyzer.py  # Etherscan buyer extraction & P&L
+├── wallet_scorer.py    # Scoring logic
+├── watchlist.py        # Persistent watchlist store
+├── cache.py            # Token & wallet cache
+├── rate_limiter.py     # Etherscan 5 req/s limiter
+├── server.py           # FastAPI dashboard backend
+├── export_watchlist.py # Excel export utility
+├── diagnostic.py       # API endpoint health check
+└── static/
+    └── index.html      # Dashboard frontend
+```
+
+---
+
+## License
+
+MIT — free to use, modify, and distribute. Attribution appreciated.
+
+---
+
+*Built by [ZenKnowsCrypto](https://dreamfullofzen.net) — Zen-Tech.inc*
