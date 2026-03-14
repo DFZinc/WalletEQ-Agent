@@ -1,0 +1,1269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WalletEQ Agent</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:        #080c10;
+    --bg2:       rgba(18, 18, 20, 0.15);
+    --bg3:       rgba(28, 28, 30, 0.20);
+    --border:    #21262d;
+    --green:     #3fb950;
+    --green-dim: #1a4a28;
+    --red:       #f85149;
+    --red-dim:   #4a1a1a;
+    --amber:     #e3b341;
+    --blue:      #58a6ff;
+    --purple:    #bc8cff;
+    --cyan:      #39d0d8;
+    --text:      #e6edf3;
+    --text2:     #c9d1d9;
+    --text3:     #8b949e;
+    --mono:      'Space Mono', monospace;
+    --sans:      'DM Sans', sans-serif;
+    --radius:    6px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background-color: var(--bg);
+    background-image: url('/static/bg.jpg');
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Dark overlay — keeps bg subtle, panels stay crisp */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 12, 16, 0.40);
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  /* Lift all content above the overlay */
+  .header, .layout { position: relative; z-index: 1; }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* ── Header ── */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    height: 80px;
+    background: rgba(13, 17, 23, 0.75);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: 'Cinzel', serif;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  .logo-icon {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-right: 10px;
+  }
+
+  .logo span { color: var(--text2); font-weight: 400; }
+  .logo-sub {
+    font-family: var(--sans);
+    font-size: 10px;
+    font-weight: 300;
+    color: var(--text3);
+    letter-spacing: 0.02em;
+    margin-left: 8px;
+    border-left: 1px solid var(--border);
+    padding-left: 10px;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--red);
+    box-shadow: 0 0 6px var(--red);
+    transition: background 0.3s;
+  }
+  .status-dot.running {
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .status-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--red);
+    transition: color 0.3s;
+  }
+  .status-label.running { color: var(--green); }
+
+  .btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    padding: 6px 14px;
+    border-radius: var(--radius);
+    border: 1px solid;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-transform: uppercase;
+  }
+
+  .btn-start {
+    background: var(--green-dim);
+    border-color: var(--green);
+    color: var(--green);
+  }
+  .btn-start:hover { background: var(--green); color: var(--bg); }
+
+  .btn-stop {
+    background: var(--red-dim);
+    border-color: var(--red);
+    color: var(--red);
+  }
+  .btn-stop:hover { background: var(--red); color: var(--bg); }
+
+  .btn-refresh {
+    background: transparent;
+    border-color: var(--border);
+    color: var(--text2);
+  }
+  .btn-refresh:hover { border-color: var(--blue); color: var(--blue); }
+
+  /* ── Layout ── */
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    padding: 24px 32px;
+    max-width: 1400px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  /* ── Grid layout — single source of truth, no overrides elsewhere ── */
+  .stats-row       { grid-column: 1 / 3; grid-row: 1;
+                     display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  .token-panel     { grid-column: 1 / 2; grid-row: 2; height: 340px; }
+  .log-panel       { grid-column: 2 / 3; grid-row: 2; height: 340px; }
+  .watchlist-panel { grid-column: 1 / 3; grid-row: 3; max-height: 280px; }
+  .activity-panel  { grid-column: 1 / 2; grid-row: 4; height: 320px; }
+  .chart-panel     { grid-column: 2 / 3; grid-row: 4; height: 320px; }
+
+  .stat-card {
+    background: rgba(13, 17, 23, 0.92);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+
+  .stat-card.green::before  { background: var(--green); }
+  .stat-card.blue::before   { background: var(--blue); }
+  .stat-card.amber::before  { background: var(--amber); }
+  .stat-card.purple::before { background: var(--purple); }
+  .stat-card.red::before    { background: var(--red); }
+
+  .stat-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--text2);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .stat-value {
+    font-family: var(--mono);
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .stat-card.green .stat-value  { color: var(--green); }
+  .stat-card.blue .stat-value   { color: var(--blue); }
+  .stat-card.amber .stat-value  { color: var(--amber); }
+  .stat-card.purple .stat-value { color: var(--purple); }
+  .stat-card.red .stat-value    { color: var(--red); }
+
+  .stat-sub {
+    font-size: 11px;
+    color: var(--text3);
+    margin-top: 4px;
+  }
+
+  /* ── Panel ── */
+  .panel {
+    background: var(--bg2);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(48, 56, 66, 0.8);
+    border-radius: var(--radius);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .panel-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text2);
+  }
+
+  .panel-badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: var(--bg3);
+    color: var(--text2);
+    border: 1px solid var(--border);
+  }
+
+  .panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0;
+  }
+
+  .panel-body::-webkit-scrollbar { width: 4px; }
+  .panel-body::-webkit-scrollbar-track { background: transparent; }
+  .panel-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* ── Watchlist table ── */
+
+  .wtable {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .wtable th {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text3);
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    background: var(--bg2);
+  }
+
+  .wtable td {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(33,38,45,0.5);
+    white-space: nowrap;
+    font-size: 12px;
+  }
+
+  .wtable tr:last-child td { border-bottom: none; }
+
+  .wtable tr:hover td { background: var(--bg3); }
+
+  .addr {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--blue);
+    cursor: pointer;
+  }
+  .addr:hover { text-decoration: underline; }
+
+  .score-badge {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 4px;
+  }
+  .score-strong   { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
+  .score-watchlist{ background: rgba(88,166,255,0.1); color: var(--blue); border: 1px solid var(--blue); }
+  .score-weak     { background: rgba(227,179,65,0.1); color: var(--amber); border: 1px solid var(--amber); }
+  .score-skip     { background: var(--bg3); color: var(--text3); border: 1px solid var(--border); }
+
+  .pnl-pos { color: var(--green); font-family: var(--mono); font-size: 11px; }
+  .pnl-neg { color: var(--red);   font-family: var(--mono); font-size: 11px; }
+  .pnl-zer { color: var(--text3); font-family: var(--mono); font-size: 11px; }
+
+  .path-tag {
+    font-family: var(--mono);
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .path-a { background: rgba(63,185,80,0.15); color: var(--green); }
+  .path-b { background: rgba(188,140,255,0.15); color: var(--purple); }
+  .path-c { background: rgba(227,179,65,0.15); color: var(--amber); }
+
+
+  .activity-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 14px;
+    border-bottom: 1px solid rgba(33,38,45,0.5);
+    animation: slideIn 0.3s ease;
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+  }
+  .activity-item:hover { background: rgba(88,166,255,0.05); }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-8px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  .activity-item:last-child { border-bottom: none; }
+
+  .action-pill {
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
+  .action-buy  { background: var(--green-dim); color: var(--green); }
+  .action-sell { background: var(--red-dim);   color: var(--red); }
+
+  .activity-token {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text);
+    flex: 1;
+  }
+
+  .activity-amount {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--amber);
+  }
+
+  .activity-wallet {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+  }
+
+  .activity-time {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    flex-shrink: 0;
+  }
+
+
+  .token-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(33,38,45,0.5);
+  }
+
+  .token-item:last-child { border-bottom: none; }
+
+  .token-logo {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--bg3);
+    flex-shrink: 0;
+    object-fit: cover;
+    border: 1px solid var(--border);
+  }
+
+  .token-logo-placeholder {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    flex-shrink: 0;
+  }
+
+  .token-info { flex: 1; min-width: 0; }
+
+  .token-symbol {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--amber);
+  }
+
+  .token-category {
+    font-size: 10px;
+    color: var(--text3);
+    margin-top: 2px;
+    text-transform: capitalize;
+  }
+
+  .token-addr {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    margin-top: 1px;
+    cursor: pointer;
+    position: relative;
+    display: inline-block;
+  }
+  .token-addr:hover { color: var(--cyan); }
+  .token-addr:hover::after {
+    content: 'click to copy';
+    position: absolute;
+    left: 0;
+    top: -18px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--cyan);
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .token-addr.copied::after { content: 'copied!'; color: var(--green); }
+
+  .token-symbol-link {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--amber);
+    text-decoration: none;
+  }
+  .token-symbol-link:hover {
+    color: var(--text);
+    text-decoration: underline;
+  }
+
+  .token-time {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text2);
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .cat-meme    { color: #f97316; }
+  .cat-defi    { color: var(--blue); }
+  .cat-layer   { color: var(--purple); }
+  .cat-stable  { color: var(--green); }
+  .cat-unknown { color: var(--text3); }
+
+
+  .log-terminal {
+    padding: 10px 14px;
+    height: 100%;
+    overflow-y: auto;
+    max-height: 280px;
+  }
+
+  .log-terminal::-webkit-scrollbar { width: 4px; }
+  .log-terminal::-webkit-scrollbar-thumb { background: var(--border); }
+
+  .log-line {
+    font-family: var(--mono);
+    font-size: 10px;
+    line-height: 1.7;
+    color: var(--text2);
+    word-break: break-all;
+  }
+
+  .log-line         { color: var(--text2); }
+  .log-red          { color: var(--red); font-weight: 700; }
+  .log-green        { color: var(--green); font-weight: 700; }
+  .log-amber        { color: var(--amber); }
+  .log-purple       { color: var(--purple); }
+  .log-cyan         { color: var(--cyan); }
+
+  /* ── Charts ── */
+  .chart-wrap { padding: 16px; height: 240px; }
+
+  /* ── Wallet detail panel ── */
+  .wallet-detail {
+    display: none;
+    background: rgba(8,12,16,0.7);
+    border-top: 1px solid var(--border);
+    padding: 12px 16px;
+    animation: slideIn 0.2s ease;
+  }
+  .wallet-detail.open { display: block; }
+  .detail-title {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+  }
+  .detail-trades {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 180px;
+    overflow-y: auto;
+  }
+  .detail-trade {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(33,38,45,0.3);
+  }
+  .detail-trade:last-child { border-bottom: none; }
+  .wtable tr.detail-row td { padding: 0; }
+  .wtable tr.wallet-row { cursor: pointer; }
+  .wtable tr.wallet-row:hover td { background: rgba(88,166,255,0.05); }
+  .expand-icon { 
+    font-size: 10px; 
+    color: var(--text3); 
+    transition: transform 0.2s;
+    display: inline-block;
+  }
+  .expand-icon.open { transform: rotate(90deg); color: var(--cyan); }
+
+  /* ── Empty state ── */
+  .empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 120px;
+    color: var(--text3);
+    gap: 8px;
+  }
+
+  .empty-icon { font-size: 28px; opacity: 0.4; }
+  .empty-text { font-family: var(--mono); font-size: 11px; }
+
+  /* ── Timestamp ── */
+  .ts {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+  }
+
+  .mono { font-family: var(--mono); }
+  .dim  { color: var(--text2); }
+
+  /* ── Responsive ── */
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    .stats-row       { grid-column: 1 / 2; grid-template-columns: repeat(2, 1fr); }
+    .token-panel, .log-panel, .watchlist-panel,
+    .activity-panel, .chart-panel { grid-column: 1 / 2; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+  <div class="logo">
+    <div class="logo-icon">
+      <img src="/static/logo.png" alt="WalletEQ" style="height:64px;width:auto;object-fit:contain;filter:contrast(1.2) brightness(1.1) drop-shadow(0 0 6px rgba(255,255,255,0.15));image-rendering:-webkit-optimize-contrast;">
+    </div>
+    WALLETEQ <span>/ AGENT DASHBOARD</span>
+    <span class="logo-sub">Vibe coded by Claude Sonnet 4.6, in collaboration with ZenKnowsCrypto</span>
+  </div>
+  <div class="header-right">
+    <div class="status-dot" id="statusDot"></div>
+    <span class="status-label" id="statusLabel">STOPPED</span>
+    <button class="btn btn-refresh" onclick="refreshAll()">↻ REFRESH</button>
+    <button class="btn btn-refresh" id="muteBtn" onclick="toggleMute()">🔊 SOUND</button>
+    <button class="btn btn-start" id="startBtn" onclick="startAgent()">▶ START AGENT</button>
+    <button class="btn btn-stop"  id="stopBtn"  onclick="stopAgent()" style="display:none">■ STOP AGENT</button>
+  </div>
+</header>
+
+<!-- Main layout -->
+<div class="layout">
+
+  <!-- Stat cards -->
+  <div class="stats-row">
+    <div class="stat-card green">
+      <div class="stat-label">Watchlist</div>
+      <div class="stat-value" id="statWatchlist">—</div>
+      <div class="stat-sub">quality wallets</div>
+    </div>
+    <div class="stat-card blue">
+      <div class="stat-label">Wallet Cache</div>
+      <div class="stat-value" id="statCache">—</div>
+      <div class="stat-sub">analyzed total</div>
+    </div>
+    <div class="stat-card amber">
+      <div class="stat-label">Tokens Scanned</div>
+      <div class="stat-value" id="statTokens">—</div>
+      <div class="stat-sub">last 24 hours</div>
+    </div>
+    <div class="stat-card purple">
+      <div class="stat-label">Total P&amp;L</div>
+      <div class="stat-value" id="statPnl">—</div>
+      <div class="stat-sub">ETH across watchlist</div>
+    </div>
+    <div class="stat-card red">
+      <div class="stat-label">Last Updated</div>
+      <div class="stat-value" style="font-size:16px;margin-top:4px" id="statTime">—</div>
+      <div class="stat-sub">server time UTC</div>
+    </div>
+  </div>
+
+  <!-- Row 1: Scanned Tokens (left) + Agent Log (right) -->
+  <div class="panel token-panel">
+    <div class="panel-header">
+      <span class="panel-title">◈ Scanned Tokens</span>
+      <span class="panel-badge" id="tokenBadge">0</span>
+    </div>
+    <div class="panel-body" id="tokenFeed"></div>
+  </div>
+
+  <div class="panel log-panel">
+    <div class="panel-header">
+      <span class="panel-title">◈ Agent Log</span>
+      <span class="panel-badge" id="logBadge">0 lines</span>
+    </div>
+    <div class="panel-body">
+      <div class="log-terminal" id="logTerminal"></div>
+    </div>
+  </div>
+
+  <!-- Row 2: Watchlist (full width) -->
+  <div class="panel watchlist-panel">
+    <div class="panel-header">
+      <span class="panel-title">◈ Watchlist</span>
+      <span class="panel-badge" id="wlBadge">0 wallets</span>
+    </div>
+    <div class="panel-body">
+      <div id="watchlistTable"></div>
+    </div>
+  </div>
+
+  <!-- Row 3: Live Activity (left) + P&L Chart (right) -->
+  <div class="panel activity-panel">
+    <div class="panel-header">
+      <span class="panel-title">◈ Live Activity</span>
+      <span class="panel-badge" id="actBadge">0</span>
+    </div>
+    <div class="panel-body" id="activityFeed"></div>
+  </div>
+
+  <div class="panel chart-panel">
+    <div class="panel-header">
+      <span class="panel-title">◈ P&amp;L Overview</span>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="pnlChart"></canvas>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const API = '';
+let pnlChart = null;
+let ws = null;
+
+// ── Audio ─────────────────────────────────────────────────────────────
+const sounds = {
+  start:         new Audio('/static/sounds/start.ogg'),
+  stop:          new Audio('/static/sounds/stop.ogg'),
+  walletalert:   new Audio('/static/sounds/walletalert.ogg'),
+  activityalert: new Audio('/static/sounds/activityalert.ogg'),
+};
+let _muted = false;
+
+function toggleMute() {
+  _muted = !_muted;
+  const btn = document.getElementById('muteBtn');
+  btn.textContent = _muted ? '🔇 MUTED' : '🔊 SOUND';
+  btn.style.color = _muted ? 'var(--red)' : 'var(--text2)';
+}
+
+function play(name) {
+  if (_muted) return;
+  try {
+    const s = sounds[name];
+    if (!s) return;
+    s.currentTime = 0;
+    s.play().catch(() => {});
+  } catch(e) {}
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────
+
+function fmt(n, d=4) {
+  if (n === null || n === undefined) return '—';
+  const v = parseFloat(n);
+  if (isNaN(v)) return '—';
+  return v.toFixed(d);
+}
+
+function pnlClass(v) {
+  if (v > 0) return 'pnl-pos';
+  if (v < 0) return 'pnl-neg';
+  return 'pnl-zer';
+}
+
+function pnlSign(v) {
+  return v > 0 ? '+' + fmt(v) : fmt(v);
+}
+
+function timeAgo(iso) {
+  if (!iso) return '';
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 60)   return Math.round(diff) + 's ago';
+  if (diff < 3600) return Math.round(diff/60) + 'm ago';
+  if (diff < 86400)return Math.round(diff/3600) + 'h ago';
+  return Math.round(diff/86400) + 'd ago';
+}
+
+function scoreClass(verdict) {
+  const m = {STRONG:'score-strong', WATCHLIST:'score-watchlist', WEAK:'score-weak', SKIP:'score-skip'};
+  return m[verdict] || 'score-skip';
+}
+
+function pathTag(path) {
+  if (!path) return '';
+  const cls = path.startsWith('A') ? 'path-a' : path.startsWith('B') ? 'path-b' : 'path-c';
+  const label = path.replace('A-consistent','PATH A').replace('B-high-conviction','PATH B').replace('C-absolute-pnl','PATH C');
+  return `<span class="path-tag ${cls}">${label}</span>`;
+}
+
+// ── Status ────────────────────────────────────────────────────────────
+
+let _lastWatchlistCount = 0;
+let _lastActivityCount  = 0;
+
+async function loadStatus() {
+  try {
+    const r = await fetch(`${API}/api/status`);
+    const d = await r.json();
+    const running = d.agent_running;
+    document.getElementById('statusDot').className    = 'status-dot' + (running ? ' running' : '');
+    document.getElementById('statusLabel').textContent  = running ? 'RUNNING' : 'STOPPED';
+    document.getElementById('statusLabel').className    = 'status-label' + (running ? ' running' : '');
+    document.getElementById('startBtn').style.display = running ? 'none'  : '';
+    document.getElementById('stopBtn').style.display  = running ? ''      : 'none';
+
+    // Wallet alert — new wallet added to watchlist
+    if (d.watchlist_count > _lastWatchlistCount && _lastWatchlistCount > 0) {
+      play('walletalert');
+    }
+    _lastWatchlistCount = d.watchlist_count;
+
+    document.getElementById('statWatchlist').textContent = d.watchlist_count;
+    document.getElementById('statCache').textContent     = d.wallet_cache;
+    document.getElementById('statTokens').textContent    = d.token_cache;
+    const t = new Date(d.timestamp);
+    document.getElementById('statTime').textContent = t.toUTCString().slice(17,22);
+  } catch(e) { console.warn('status', e); }
+}
+
+// ── Watchlist ─────────────────────────────────────────────────────────
+
+async function loadWatchlist() {
+  try {
+    const r  = await fetch(`${API}/api/watchlist`);
+    const ws = await r.json();
+    document.getElementById('wlBadge').textContent = ws.length + ' wallets';
+
+    let totalPnl = 0;
+    ws.forEach(w => totalPnl += w.pnl_eth || 0);
+    const pnlEl = document.getElementById('statPnl');
+    pnlEl.textContent = (totalPnl >= 0 ? '+' : '') + fmt(totalPnl, 2);
+    pnlEl.style.color = totalPnl >= 0 ? 'var(--green)' : 'var(--red)';
+
+    if (!ws.length) {
+      document.getElementById('watchlistTable').innerHTML =
+        `<div class="empty"><div class="empty-icon">◈</div><div class="empty-text">No wallets yet</div></div>`;
+      return;
+    }
+
+    const rows = ws.map(w => {
+      const trades = (w.recent_activity || []).slice(0,10).map(t => `
+        <div class="detail-trade">
+          <span class="action-pill action-${t.action}">${t.action}</span>
+          <span class="activity-token">${t.token_symbol}</span>
+          <span class="activity-amount">${t.eth_amount > 0 ? fmt(t.eth_amount,4)+' ETH' : '—'}</span>
+          <span class="activity-time">${timeAgo(t.timestamp)}</span>
+        </div>`).join('') || '<span style="color:var(--text3);font-size:11px">No recent activity</span>';
+      return `
+      <tr class="wallet-row" onclick="toggleDetail('detail-${w.address}', this)">
+        <td><span class="expand-icon" id="icon-${w.address}">▶</span> <a class="addr" href="https://etherscan.io/address/${w.address}" target="_blank" title="View on Etherscan" onclick="event.stopPropagation()">${w.short}</a></td>
+        <td><span class="mono dim">${w.found_on || '—'}</span></td>
+        <td><span class="ts">${w.found_at}</span></td>
+        <td><span class="mono dim">${w.age_days}d</span></td>
+        <td><span class="score-badge ${scoreClass(w.verdict)}">${w.score}</span></td>
+        <td>${pathTag(w.path)}</td>
+        <td><span class="mono dim">${fmt(w.win_rate,1)}%</span></td>
+        <td><span class="mono dim">${w.unique_tokens}</span></td>
+        <td><span class="mono dim">${fmt(w.cost_eth,4)}</span></td>
+        <td><span class="${pnlClass(w.pnl_eth)}">${pnlSign(w.pnl_eth)} ETH</span></td>
+        <td><span class="${pnlClass(w.roi_pct)}">${fmt(w.roi_pct,1)}%</span></td>
+        <td><span class="mono dim">${w.activity_count}</span></td>
+      </tr>
+      <tr class="detail-row">
+        <td colspan="12">
+          <div class="wallet-detail" id="detail-${w.address}">
+            <div class="detail-title">Recent Activity — ${w.short}</div>
+            <div class="detail-trades">${trades}</div>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+
+    document.getElementById('watchlistTable').innerHTML = `
+      <table class="wtable">
+        <thead>
+          <tr>
+            <th>Address</th><th>Found On</th><th>Found At</th>
+            <th>Age</th><th>Score</th><th>Path</th>
+            <th>Win Rate</th><th>Tokens</th>
+            <th>Cost (ETH)</th><th>P&L</th><th>ROI</th><th>Activity</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  } catch(e) { console.warn('watchlist', e); }
+}
+
+// ── Activity feed ─────────────────────────────────────────────────────
+
+async function loadActivity() {
+  try {
+    const r  = await fetch(`${API}/api/activity?limit=40`);
+    const acts = await r.json();
+
+    // Activity alert — new trades detected
+    if (acts.length > _lastActivityCount && _lastActivityCount > 0) {
+      play('activityalert');
+    }
+    _lastActivityCount = acts.length;
+
+    document.getElementById('actBadge').textContent = acts.length;
+
+    if (!acts.length) {
+      document.getElementById('activityFeed').innerHTML =
+        `<div class="empty"><div class="empty-icon">◎</div><div class="empty-text">No activity yet</div></div>`;
+      return;
+    }
+
+    document.getElementById('activityFeed').innerHTML = acts.map(a => `
+      <a class="activity-item"
+         href="https://etherscan.io/tx/${a.tx_hash}"
+         target="_blank"
+         title="View transaction on Etherscan">
+        <span class="action-pill action-${a.action}">${a.action}</span>
+        <span class="activity-token">${a.token_symbol}</span>
+        <span class="activity-amount">${a.eth_amount > 0 ? fmt(a.eth_amount,4)+' ETH' : '—'}</span>
+        <span class="activity-wallet">${a.short}</span>
+        <span class="activity-time">${timeAgo(a.timestamp)}</span>
+      </a>`).join('');
+  } catch(e) { console.warn('activity', e); }
+}
+
+// ── Token metadata cache (CoinGecko) ─────────────────────────────────
+const tokenMetaCache = {};
+
+async function fetchTokenMeta(address) {
+  if (tokenMetaCache[address]) return tokenMetaCache[address];
+  try {
+    const r = await fetch(
+      `https://api.coingecko.com/api/v3/coins/ethereum/contract/${address}`
+    );
+    if (!r.ok) { tokenMetaCache[address] = null; return null; }
+    const d = await r.json();
+    const meta = {
+      logo:     d.image?.small || null,
+      category: d.categories?.[0] || null,
+    };
+    tokenMetaCache[address] = meta;
+    return meta;
+  } catch { tokenMetaCache[address] = null; return null; }
+}
+
+function categoryClass(cat) {
+  if (!cat) return 'cat-unknown';
+  const c = cat.toLowerCase();
+  if (c.includes('meme'))                       return 'cat-meme';
+  if (c.includes('defi') || c.includes('dex') || c.includes('lending')) return 'cat-defi';
+  if (c.includes('layer') || c.includes('l2') || c.includes('scaling')) return 'cat-layer';
+  if (c.includes('stable'))                     return 'cat-stable';
+  return 'cat-unknown';
+}
+
+function logoHtml(meta, symbol) {
+  if (meta?.logo) {
+    return `<img class="token-logo" src="${meta.logo}" alt="${symbol}" onerror="this.style.display='none'">`;
+  }
+  return `<div class="token-logo-placeholder">${symbol.slice(0,2)}</div>`;
+}
+
+// ── Token feed ────────────────────────────────────────────────────────
+
+async function loadTokens() {
+  try {
+    const r  = await fetch(`${API}/api/tokens`);
+    const ts = await r.json();
+    document.getElementById('tokenBadge').textContent = ts.length;
+
+    if (!ts.length) {
+      document.getElementById('tokenFeed').innerHTML =
+        `<div class="empty"><div class="empty-icon">◎</div><div class="empty-text">No tokens scanned</div></div>`;
+      return;
+    }
+
+    // Render immediately with placeholders
+    document.getElementById('tokenFeed').innerHTML = ts.slice(0,30).map(t => `
+      <div class="token-item" id="token-${t.address}">
+        <div class="token-logo-placeholder" id="logo-${t.address}">${t.symbol.slice(0,2)}</div>
+        <div class="token-info">
+          <a class="token-symbol-link"
+             href="https://dexscreener.com/ethereum/${t.address}"
+             target="_blank"
+             title="View on DexScreener">${t.symbol}</a>
+          <div class="token-category cat-unknown" id="cat-${t.address}">loading...</div>
+          <div class="token-addr"
+               title="${t.address}"
+               onclick="copyCA(this, '${t.address}')">${t.short}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div class="token-time">${timeAgo(t.scanned_at)}</div>
+          ${t.price_change !== undefined && t.price_change !== null
+            ? `<div style="font-family:var(--mono);font-size:11px;margin-top:3px;color:${t.price_change >= 0 ? 'var(--green)' : 'var(--red)'}">${t.price_change >= 0 ? '+' : ''}${parseFloat(t.price_change).toFixed(1)}%</div>`
+            : ''}
+        </div>
+      </div>`).join('');
+
+    // Only log CoinGecko fetch when we have new tokens not yet in cache
+    const uncached = ts.slice(0,30).filter(t => !tokenMetaCache[t.address]);
+    if (uncached.length > 0) {
+      appendLog({ text: `COINGECKO Fetching token metadata for ${uncached.length} token(s)...`, ts: new Date().toISOString() });
+    }
+
+    // Enrich with CoinGecko data, then re-sort known tokens to top
+    const feed = document.getElementById('tokenFeed');
+    const tokenList = ts.slice(0,30);
+    let resolved = 0;
+
+    for (const t of tokenList) {
+      fetchTokenMeta(t.address).then(meta => {
+        const logoEl = document.getElementById(`logo-${t.address}`);
+        const catEl  = document.getElementById(`cat-${t.address}`);
+        const item   = document.getElementById(`token-${t.address}`);
+
+        if (!meta) {
+          if (catEl) catEl.textContent = 'unknown';
+          if (item)  item.dataset.known = '0';
+        } else {
+          if (logoEl && meta.logo) {
+            logoEl.outerHTML = `<img class="token-logo" src="${meta.logo}" alt="${t.symbol}">`;
+          }
+          if (catEl) {
+            const cat = meta.category || 'unknown';
+            catEl.textContent = cat;
+            catEl.className   = `token-category ${categoryClass(cat)}`;
+          }
+          if (item) item.dataset.known = meta.logo ? '1' : '0';
+        }
+
+        // Once all resolved, re-sort: known (logo) first, unknown last
+        resolved++;
+        if (resolved === tokenList.length) {
+          const items = [...feed.querySelectorAll('.token-item')];
+          items.sort((a, b) => (b.dataset.known || '0') - (a.dataset.known || '0'));
+          items.forEach(el => feed.appendChild(el));
+        }
+      });
+    }
+  } catch(e) { console.warn('tokens', e); }
+}
+
+// ── P&L Chart ─────────────────────────────────────────────────────────
+
+async function loadChart() {
+  try {
+    const r = await fetch(`${API}/api/pnl_chart`);
+    const d = await r.json();
+
+    const ctx = document.getElementById('pnlChart').getContext('2d');
+    if (pnlChart) pnlChart.destroy();
+
+    pnlChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: d.labels,
+        datasets: [
+          {
+            label: 'P&L (ETH)',
+            data: d.pnl,
+            backgroundColor: d.pnl.map(v => v >= 0 ? 'rgba(63,185,80,0.6)' : 'rgba(248,81,73,0.6)'),
+            borderColor:     d.pnl.map(v => v >= 0 ? '#3fb950' : '#f85149'),
+            borderWidth: 1,
+            borderRadius: 3,
+          },
+          {
+            label: 'Cost (ETH)',
+            data: d.costs,
+            backgroundColor: 'rgba(88,166,255,0.2)',
+            borderColor: '#58a6ff',
+            borderWidth: 1,
+            borderRadius: 3,
+            type: 'bar',
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            labels: { color: '#8b949e', font: { family: 'Space Mono', size: 10 } }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: '#8b949e', font: { family: 'Space Mono', size: 10 } },
+            grid:  { color: '#21262d' }
+          },
+          y: {
+            ticks: { color: '#8b949e', font: { family: 'Space Mono', size: 10 } },
+            grid:  { color: '#21262d' }
+          }
+        }
+      }
+    });
+  } catch(e) { console.warn('chart', e); }
+}
+
+// ── Log terminal ──────────────────────────────────────────────────────
+
+function appendLog(entry) {
+  const term = document.getElementById('logTerminal');
+  const text = entry.text.replace(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} \[\w+\] /, '');
+  const line = document.createElement('div');
+  line.className = 'log-line';
+
+  // Highlight specific keywords inline
+  const highlighted = text
+    // Startup / init — cyan
+    .replace(/(ETH Wallet Agent started\.)/g, '<span class="log-cyan">$1</span>')
+    .replace(/(Cache: [^<]+)/g, '<span class="log-cyan">$1</span>')
+    .replace(/(Watchlist: [^<]+)/g, '<span class="log-cyan">$1</span>')
+    // Active tokens — green if found, amber if none
+    .replace(/([0-9]+ new active token\(s\)[^<]*)/g, '<span class="log-green">$1</span>')
+    .replace(/([0-9]+ active token\(s\)[^<]*)/g, '<span class="log-cyan">$1</span>')
+    .replace(/(No active tokens detected[^<]*)/g, '<span class="log-amber">$1</span>')
+    // Watchlist monitoring
+    .replace(/(Refreshing [0-9]+ watchlisted[^<]*)/g, '<span class="log-cyan">$1</span>')
+    .replace(/(No new activity\.)/g, '<span class="log-amber">$1</span>')
+    // Wallet results
+    .replace(/(DISQUALIFIED)/g, '<span class="log-red">$1</span>')
+    .replace(/(WATCHLIST|STRONG)/g, '<span class="log-green">$1</span>')
+    .replace(/(✅[^<]*)/g, '<span class="log-green">$1</span>')
+    .replace(/(👁)/g, '<span class="log-purple">$1</span>')
+    // Volume verdicts
+    .replace(/(ORGANIC)/g, '<span class="log-green">$1</span>')
+    .replace(/(SUSPICIOUS)/g, '<span class="log-red">$1</span>')
+    .replace(/(MIXED)/g, '<span class="log-amber">$1</span>')
+    // Errors and warnings
+    .replace(/\b(ERROR)\b/g, '<span class="log-red">$1</span>')
+    .replace(/\b(WARNING)\b/g, '<span class="log-amber">$1</span>')
+    .replace(/COINGECKO /g, '<span class="log-cyan">◈ CoinGecko </span>');
+
+  line.innerHTML = highlighted;
+  term.appendChild(line);
+  if (term.children.length > 300) term.removeChild(term.firstChild);
+  term.scrollTop = term.scrollHeight;
+  document.getElementById('logBadge').textContent = term.children.length + ' lines';
+}
+
+async function loadLogs() {
+  try {
+    const r    = await fetch(`${API}/api/logs`);
+    const logs = await r.json();
+    const term = document.getElementById('logTerminal');
+    term.innerHTML = '';
+    logs.forEach(appendLog);
+  } catch(e) {}
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────
+
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/logs`);
+  ws.onmessage = e => {
+    try { appendLog(JSON.parse(e.data)); } catch(_) {}
+  };
+  ws.onclose = () => setTimeout(connectWS, 3000);
+}
+
+// ── Agent controls ────────────────────────────────────────────────────
+
+async function startAgent() {
+  await fetch(`${API}/api/agent/start`, {method:'POST'});
+  await loadStatus();
+  play('start');
+}
+
+async function stopAgent() {
+  await fetch(`${API}/api/agent/stop`, {method:'POST'});
+  await loadStatus();
+  play('stop');
+}
+
+// ── Wallet detail toggle ─────────────────────────────────────────────
+
+function toggleDetail(id, row) {
+  const panel = document.getElementById(id);
+  const icon  = row.querySelector('.expand-icon');
+  if (!panel) return;
+  const isOpen = panel.classList.contains('open');
+  // Close all others
+  document.querySelectorAll('.wallet-detail.open').forEach(el => el.classList.remove('open'));
+  document.querySelectorAll('.expand-icon.open').forEach(el => el.classList.remove('open'));
+  if (!isOpen) {
+    panel.classList.add('open');
+    if (icon) icon.classList.add('open');
+  }
+}
+
+// ── Copy contract address ─────────────────────────────────────────────
+
+function copyCA(el, address) {
+  navigator.clipboard.writeText(address).then(() => {
+    el.classList.add('copied');
+    setTimeout(() => el.classList.remove('copied'), 1500);
+  }).catch(() => {
+    // Fallback for non-https
+    const ta = document.createElement('textarea');
+    ta.value = address;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    el.classList.add('copied');
+    setTimeout(() => el.classList.remove('copied'), 1500);
+  });
+}
+
+// ── Refresh all ───────────────────────────────────────────────────────
+
+async function refreshAll() {
+  await Promise.all([
+    loadStatus(),
+    loadWatchlist(),
+    loadActivity(),
+    loadTokens(),
+    loadChart(),
+  ]);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────
+
+(async () => {
+  await refreshAll();
+  await loadLogs();
+  connectWS();
+  setInterval(refreshAll, 30000);  // Auto-refresh every 30s
+})();
+</script>
+</body>
+</html>
