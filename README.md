@@ -14,7 +14,7 @@ WalletEQ Agent is an on-chain wallet intelligence tool that monitors Ethereum to
   <img src="https://img.shields.io/badge/Built%20with-Claude%20Sonnet%204.6-orange?style=flat-square"/>
 </p>
 <p align="center">
-  <img src="screenshots/Screenshot1.jpg" alt="WalletEQ Dashboard" width="900"/>
+  <img src="Screenshots/Screenshot1.jpg" alt="WalletEQ Dashboard" width="900"/>
 </p>
 
 ---
