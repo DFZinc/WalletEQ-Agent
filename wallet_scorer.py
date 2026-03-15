@@ -68,8 +68,8 @@ class WalletScorer:
         total_pnl  = profile.get("total_pnl_eth", 0)
 
         path_a = win_rate >= self.PATH_A_WIN_RATE
-        path_b = roi >= self.PATH_B_MIN_ROI and total_pnl >= self.PATH_B_MIN_PNL
-        path_c = total_pnl >= self.PATH_C_MIN_PNL
+        path_b = roi >= self.PATH_B_MIN_ROI and profile.get('total_pnl_usd', 0) >= self.PATH_B_MIN_PNL * 2000
+        path_c = profile.get('total_pnl_usd', 0) >= self.PATH_C_MIN_PNL * 2000
 
         if not path_a and not path_b and not path_c:
             return {
@@ -78,7 +78,7 @@ class WalletScorer:
                 "verdict":           "DISQUALIFIED",
                 "disqualified":      True,
                 "disqualify_reason": (
-                    f"Win rate {win_rate}% | ROI {roi:.1f}% | P&L {total_pnl:.2f} ETH — "
+                    f"Win rate {win_rate}% | ROI {roi:.1f}% | P&L ${total_pnl:.2f} USD — "
                     f"no qualification path met"
                 ),
                 "path": None,

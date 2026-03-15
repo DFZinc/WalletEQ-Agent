@@ -27,7 +27,8 @@ from pathlib import Path
 from typing import Optional
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi.requests import Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -150,18 +151,35 @@ async def get_activity(limit: int = 50):
 
 @app.get("/api/tokens")
 async def get_tokens():
-    tc = load_json(TOKEN_CACHE)
-    tokens = []
+    from datetime import datetime, timezone, timedelta
+    tc     = load_json(TOKEN_CACHE)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    active = []
+    history = []
     for addr, entry in tc.items():
-        tokens.append({
+        item = {
             "address":      addr,
             "short":        addr[:6] + "..." + addr[-4:],
             "symbol":       entry.get("symbol", ""),
             "price_change": entry.get("price_change", None),
+            "peak_volume":  entry.get("peak_volume", 0.0),
+            "first_seen":   entry.get("first_seen", entry.get("scanned_at", "")),
+            "last_seen":    entry.get("last_seen",  entry.get("scanned_at", "")),
             "scanned_at":   entry.get("scanned_at", ""),
-        })
-    tokens.sort(key=lambda x: x["scanned_at"], reverse=True)
-    return tokens
+        }
+        try:
+            last = datetime.fromisoformat(item["last_seen"])
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
+            if last >= cutoff:
+                active.append(item)
+            else:
+                history.append(item)
+        except Exception:
+            history.append(item)
+    active.sort(key=lambda x: x["last_seen"], reverse=True)
+    history.sort(key=lambda x: x["last_seen"], reverse=True)
+    return {"active": active, "history": history}
 
 
 @app.get("/api/pnl_chart")
@@ -187,6 +205,148 @@ async def get_logs():
     return agent_logs[-200:]
 
 
+# ── Manual wallet scan ───────────────────────────────────────────────
+
+@app.post("/api/wallet/scan")
+async def manual_wallet_scan(request: dict):
+    """
+    Manually scan a single wallet address through the full analyzer and scorer.
+    Returns the profile and score. If score qualifies, adds to watchlist.
+    """
+    from rate_limiter  import RateLimiter
+    from wallet_analyzer import WalletAnalyzer
+    from wallet_scorer   import WalletScorer
+    from watchlist       import Watchlist
+    from cache           import Cache
+    from datetime        import datetime, timezone
+
+    address = request.get("address", "").strip().lower()
+    if not address or not address.startswith("0x") or len(address) != 42:
+        return JSONResponse(status_code=400, content={"error": "Invalid wallet address"})
+
+    rl       = RateLimiter(calls_per_second=5)
+    analyzer = WalletAnalyzer(rl)
+    scorer   = WalletScorer()
+    cache    = Cache()
+    watchlist = Watchlist()
+
+    # Return cached result instantly if available
+    if cache.has_wallet(address):
+        cached = cache.get_wallet(address)
+        return {
+            "address": address,
+            "profile": cached["profile"],
+            "score":   cached["score"],
+            "cached":  True,
+            "added_to_watchlist": False,
+        }
+
+    profile  = await analyzer.build_wallet_profile(address)
+    score    = scorer.score(profile)
+    cache.save_wallet(address, profile, score)
+
+    added = False
+    if score["total"] >= 65:
+        added = watchlist.add({
+            "address":  address,
+            "profile":  profile,
+            "score":    score,
+            "found_on": "manual",
+            "found_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+    return {
+        "address": address,
+        "profile": profile,
+        "score":   score,
+        "cached":  False,
+        "added_to_watchlist": added,
+    }
+
+
+# ── Manual token scan ───────────────────────────────────────────────
+
+@app.post("/api/token/scan")
+async def manual_token_scan(request: dict):
+    """
+    Manually scan a token address — extract buyers and analyze them.
+    Identical pipeline to the agent's automatic token processing.
+    """
+    from rate_limiter    import RateLimiter
+    from wallet_analyzer import WalletAnalyzer
+    from wallet_scorer   import WalletScorer
+    from watchlist       import Watchlist
+    from cache           import Cache
+    from datetime        import datetime, timezone
+
+    address = request.get("address", "").strip().lower()
+    if not address or not address.startswith("0x") or len(address) != 42:
+        return JSONResponse(status_code=400, content={"error": "Invalid token address"})
+
+    rl        = RateLimiter(calls_per_second=5)
+    analyzer  = WalletAnalyzer(rl)
+    scorer    = WalletScorer()
+    cache     = Cache()
+    watchlist = Watchlist()
+
+    buyers = await analyzer.get_token_buyers(
+        token_address=address,
+        window_minutes=60,
+        limit=30
+    )
+
+    if not buyers:
+        return {"address": address, "buyers_found": 0, "results": [], "added_to_watchlist": 0}
+
+    results = []
+    added_count = 0
+
+    for wallet in buyers:
+        if cache.has_wallet(wallet):
+            cached  = cache.get_wallet(wallet)
+            profile = cached["profile"]
+            score   = cached["score"]
+            was_cached = True
+        else:
+            profile    = await analyzer.build_wallet_profile(wallet)
+            score      = scorer.score(profile)
+            cache.save_wallet(wallet, profile, score)
+            was_cached = False
+
+        added = False
+        if score["total"] >= 65:
+            added = watchlist.add({
+                "address":  wallet,
+                "profile":  profile,
+                "score":    score,
+                "found_on": f"manual:{address[:10]}",
+                "found_at": datetime.now(timezone.utc).isoformat(),
+            })
+            if added:
+                added_count += 1
+
+        results.append({
+            "address":    wallet,
+            "age_days":   profile.get("age_days", 0),
+            "win_rate":   profile.get("win_rate", 0),
+            "pnl_usd":    profile.get("total_pnl_usd", 0),
+            "roi_pct":    profile.get("roi_pct", 0),
+            "score":      score["total"],
+            "verdict":    score["verdict"],
+            "disqualify": score.get("disqualify_reason", ""),
+            "cached":     was_cached,
+            "added":      added,
+        })
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return {
+        "address":            address,
+        "buyers_found":       len(buyers),
+        "results":            results,
+        "added_to_watchlist": added_count,
+    }
+
+
 # ── Agent control ─────────────────────────────────────────────────────
 
 @app.post("/api/agent/start")
@@ -195,11 +355,22 @@ async def start_agent():
     if agent_process and agent_process.returncode is None:
         return {"status": "already_running"}
     agent_logs = []
+    import os as _os
+    env = _os.environ.copy()
+    # Ensure API key is explicitly passed to the subprocess
+    if not env.get("ETHERSCAN_API_KEY"):
+        env_file = BASE_DIR / ".env"
+        if env_file.exists():
+            for line in env_file.read_text().splitlines():
+                if line.startswith("ETHERSCAN_API_KEY="):
+                    env["ETHERSCAN_API_KEY"] = line.split("=", 1)[1].strip()
+                    break
     agent_process = await asyncio.create_subprocess_exec(
         sys.executable, str(BASE_DIR / "agent.py"),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
         cwd=str(BASE_DIR),
+        env=env,
     )
     asyncio.create_task(_stream_agent_output(agent_process))
     return {"status": "started"}

@@ -18,24 +18,29 @@ WalletEQ Agent is an on-chain wallet intelligence tool that monitors Ethereum to
 
 ## What It Does
 
-- Detects ETH tokens with genuine volume activity using four discovery sources: Uniswap V3 pool creation events, Uniswap V2 pair creation events, active router swap activity, and GeckoTerminal trending pools
+- Detects ETH tokens with genuine volume activity using four independent discovery sources
+- Only validates tokens with confirmed swap activity — unlaunched pools with no liquidity are filtered out
 - Extracts buyer wallets from on-chain token transfer data via Etherscan
 - Scores each wallet across win rate, ROI, P&L (in USD), trade diversity, and wallet age
 - Builds a persistent watchlist of quality traders
 - Monitors watchlisted wallets for new activity every cycle
 - Displays everything in a real-time web dashboard
+- Supports manual wallet and token scanning for opportunities the automatic scanner may miss
 
 ---
 
 ## Dashboard Features
 
-- Live agent log with colour-coded events
+- Live agent log with colour-coded events and full contract addresses
 - Scanned token feed with CoinGecko logos and categories
+- Token history panel showing previously active tokens that have since gone inactive
 - Watchlist table with expandable trade history per wallet
 - Live activity feed linked to Etherscan transactions
 - P&L overview chart
 - Agent start/stop controls with audio alerts
 - Auto-exports watchlist to Excel on new wallet discovery
+- **Manual Wallet Scanner** — paste any wallet address to run a full profile and score analysis
+- **Manual Token Scanner** — paste any token contract address to extract buyers, analyze them, and add qualifying wallets to the watchlist
 
 ---
 
@@ -56,7 +61,7 @@ cd walleteq-agent
 
 **2. Install dependencies**
 ```bash
-pip install aiohttp fastapi uvicorn openpyxl
+pip install aiohttp fastapi uvicorn openpyxl reportlab
 ```
 
 **3. Set your API key**
@@ -86,16 +91,16 @@ Then open [http://localhost:8000](http://localhost:8000) in your browser and cli
 
 ## Token Discovery
 
-The agent uses four independent sources each cycle to detect tokens with genuine volume activity:
+The agent uses four independent sources each cycle to detect tokens with genuine volume activity. Only tokens confirmed to have real swap activity are validated — newly created pools with no trades are automatically filtered out.
 
 | Source | Method | Catches |
 |--------|--------|---------|
 | V3 Pool Events | Uniswap V3 Factory event logs | New V3 launches within 6 hours |
 | V2 Pair Events | Uniswap V2 Factory event logs | New V2 launches within 6 hours |
 | Router Activity | V2 + V3 router token transfers | Any token currently being swapped |
-| GeckoTerminal | Trending pools API | Volume spikes on established tokens |
+| GeckoTerminal | Trending pools API | Volume spikes on any token, any router |
 
-All candidates are validated against DexScreener for real volume, liquidity, and transaction count before being passed to the wallet analyzer.
+Tokens from Sources 1 and 2 are only passed to validation if they also appear in Source 3 or 4, confirming real liquidity and swap activity. All confirmed candidates are validated against DexScreener, with GeckoTerminal as a fallback for tokens DexScreener cannot serve.
 
 ---
 
@@ -121,6 +126,16 @@ P&L is calculated in **USD at the time of each trade**, not at today's ETH price
 
 ---
 
+## Manual Scanning
+
+### Manual Wallet Scanner
+Paste any wallet address into the Manual Wallet Scanner panel to run a full analysis outside of the automatic cycle. Results show score, age, win rate, P&L, ROI, and qualification path. Qualifying wallets are added to the watchlist automatically. Cached wallets return instantly.
+
+### Manual Token Scanner
+Paste any token contract address into the Manual Token Scanner panel to extract recent buyers and run the full wallet analysis pipeline on each one — identical to what the automatic agent does. Useful for tokens the scanner may have missed due to timing or API limitations. Results show a ranked table of all buyers with their full profiles, and qualifying wallets are added to the watchlist automatically.
+
+---
+
 ## Data Sources
 
 | Data | Source | Auth |
@@ -129,6 +144,7 @@ P&L is calculated in **USD at the time of each trade**, not at today's ETH price
 | V2 pair creation events | Etherscan V2 event logs | Free API key |
 | Router swap activity | Etherscan V2 token transfers | Free API key |
 | GeckoTerminal trending | GeckoTerminal public API | None required |
+| GeckoTerminal token pools | GeckoTerminal public API | None required |
 | DexScreener validation | DexScreener token pairs | None required |
 | Buyer extraction | Etherscan V2 token transfers | Free API key |
 | Wallet history & P&L | Etherscan V2 internal + token transfers | Free API key |
@@ -154,6 +170,8 @@ walleteq-agent/
 └── static/
     └── index.html      # Dashboard frontend
 ```
+
+---
 
 ## Using the Agent & Notes from the Author
 

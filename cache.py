@@ -61,10 +61,15 @@ class Cache:
         scanned_at = datetime.fromisoformat(entry["scanned_at"])
         return datetime.now(timezone.utc) - scanned_at < timedelta(hours=self.token_ttl_hours)
 
-    def save_token(self, address: str, symbol: str, price_change: float = 0.0):
-        self._tokens[address.lower()] = {
+    def save_token(self, address: str, symbol: str, price_change: float = 0.0, volume_usd: float = 0.0):
+        addr    = address.lower()
+        existing = self._tokens.get(addr, {})
+        self._tokens[addr] = {
             "symbol":       symbol,
             "price_change": round(price_change, 2),
+            "peak_volume":  max(existing.get("peak_volume", 0.0), volume_usd),
+            "first_seen":   existing.get("first_seen") or datetime.now(timezone.utc).isoformat(),
+            "last_seen":    datetime.now(timezone.utc).isoformat(),
             "scanned_at":   datetime.now(timezone.utc).isoformat(),
         }
         self._save(self.token_file, self._tokens)

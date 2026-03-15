@@ -18,6 +18,8 @@ from wallet_scorer   import WalletScorer
 from watchlist       import Watchlist
 from cache           import Cache
 
+BASE_DIR = Path(__file__).parent
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s"
@@ -61,19 +63,12 @@ class ETHWalletAgent:
             await self._refresh_watchlist()
             return
 
-        # Filter already-scanned tokens
-        new_tokens = [t for t in active_tokens if not self.cache.has_token(t["address"])]
-        skipped    = len(active_tokens) - len(new_tokens)
+        # All active tokens are processed every cycle — no token caching gate.
+        # Token volume changes every cycle and must always be re-evaluated.
+        # Only wallet analysis results are cached (expensive Etherscan calls).
+        log.info(f"{len(active_tokens)} active token(s) detected.")
 
-        if skipped:
-            log.info(
-                f"{len(active_tokens)} active token(s) — "
-                f"{skipped} cached, {len(new_tokens)} new."
-            )
-        else:
-            log.info(f"{len(new_tokens)} new active token(s).")
-
-        for token in new_tokens:
+        for token in active_tokens:
             await self._process_token(token)
 
         await self._refresh_watchlist()
@@ -84,7 +79,7 @@ class ETHWalletAgent:
         log.info(f"Analyzing: {symbol} | {address}")
 
         # Mark scanned immediately — store price change for dashboard display
-        self.cache.save_token(address, symbol, token.get("price_change_pct_1h", 0.0))
+        self.cache.save_token(address, symbol, token.get("price_change_pct_1h", 0.0), token.get("volume_usd_1h", 0.0))
 
         buyers = await self.wallet_analyzer.get_token_buyers(
             token_address=address,
@@ -135,7 +130,7 @@ class ETHWalletAgent:
 
         for w in quality_wallets:
             if self.watchlist.add(w):
-                log.info(f"  ✅ Watchlist: {w['address'][:10]}... | Score: {w['score']['total']} | {w['score']['verdict']}")
+                log.info(f"  ✅ Watchlist: {w['address']} | Score: {w['score']['total']} | {w['score']['verdict']}")
                 # Auto-export spreadsheet
                 try:
                     import subprocess
@@ -181,11 +176,11 @@ class ETHWalletAgent:
         reason = score.get("disqualify_reason", "")
         path   = f" [{score['path']}]" if score.get("path") else ""
         log.info(
-            f"  {tag} {address[:10]}... | "
+            f"  {tag} {address}... | "
             f"Age: {profile['age_days']}d | "
             f"Win rate: {profile['win_rate']}% | "
-            f"Cost: {profile.get('total_cost_eth', 0):.4f} ETH | "
-            f"P&L: {profile['total_pnl_eth']:.4f} ETH | "
+            f"Cost: ${profile.get('total_cost_usd', 0):,.0f} | "
+            f"P&L: ${profile.get('total_pnl_usd', 0):,.0f} | "
             f"ROI: {profile.get('roi_pct', 0):.1f}% | "
             f"Score: {score['total']}/100 | "
             f"{score['verdict']}{path}"
