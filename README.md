@@ -2,11 +2,11 @@
   <img src="static/logo.png" alt="WalletEQ Agent" width="120"/>
 </p>
 
-# WalletEQ Agent
+<h1 align="center">  Zen-Tech WalletEQ Agent - ERC20 Version </h1>
 
-**A Zen-Tech proof of concept** — Vibe coded by Claude Sonnet 4.6, in collaboration with ZenKnowsCrypto
+<p align="center">**A Zen-Tech proof of concept** — Vibe coded by Claude Sonnet 4.6, in collaboration with ZenKnowsCrypto. </p>
 
-WalletEQ Agent is an on-chain wallet intelligence tool that monitors Ethereum token volume, extracts buyers, scores wallets by trading quality, and builds a watchlist of high-conviction traders to monitor over time.
+<p align="center"> WalletEQ Agent is an on-chain wallet intelligence tool that monitors Ethereum token volume, extracts buyers, scores wallets by trading quality, and builds a watchlist of high-conviction traders to monitor over time. </p>
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10+-blue?style=flat-square&logo=python"/>
   <img src="https://img.shields.io/badge/Ethereum-Mainnet-purple?style=flat-square&logo=ethereum"/>
@@ -15,6 +15,9 @@ WalletEQ Agent is an on-chain wallet intelligence tool that monitors Ethereum to
 </p>
 <p align="center">
   <img src="Screenshots/Screenshot1.jpg" alt="WalletEQ Dashboard" width="900"/>
+</p>
+<p align="center">
+  <img src="Screenshots/Screenshot2.jpg" alt="WalletEQ Dashboard" width="900"/>
 </p>
 
 ---
